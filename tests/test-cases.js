@@ -848,6 +848,16 @@ var PARSE_TESTS = [
 		}
 	},
 	{
+		description: "Multi-character delimiter (length 2) with quoted field",
+		input: 'a, b, "c, e", d',
+		config: { delimiter: ", " },
+		notes: "The quotes must be immediately adjacent to the delimiter to indicate a quoted field",
+		expected: {
+			data: [['a', 'b', 'c, e', 'd']],
+			errors: []
+		}
+	},
+	{
 		description: "Callback delimiter",
 		input: 'a$ b$ c',
 		config: { delimiter: function(input) { return input[1] + ' '; } },
@@ -994,6 +1004,15 @@ var PARSE_TESTS = [
 		config: { dynamicTyping: true },
 		expected: {
 			data: [["ISO date", "long date"], [new Date("2018-05-04T21:08:03.269Z"), "Fri May 04 2018 14:08:03 GMT-0700 (PDT)"], [new Date("2018-05-08T15:20:22.642Z"), "Tue May 08 2018 08:20:22 GMT-0700 (PDT)"]],
+			errors: []
+		}
+	},
+	{
+		description: "Dynamic typing skips ISO date strings ocurring in other strings",
+		input: 'ISO date,String with ISO date\r\n2018-05-04T21:08:03.269Z,The date is 2018-05-04T21:08:03.269Z\r\n2018-05-08T15:20:22.642Z,The date is 2018-05-08T15:20:22.642Z',
+		config: { dynamicTyping: true },
+		expected: {
+			data: [["ISO date", "String with ISO date"], [new Date("2018-05-04T21:08:03.269Z"), "The date is 2018-05-04T21:08:03.269Z"], [new Date("2018-05-08T15:20:22.642Z"), "The date is 2018-05-08T15:20:22.642Z"]],
 			errors: []
 		}
 	},
@@ -1703,6 +1722,12 @@ var UNPARSE_TESTS = [
 		input: [['A', 'b', 'c'], ['d', 'e', 'f']],
 		config: { delimiter: ', ' },
 		expected: 'A, b, c\r\nd, e, f'
+	},
+	{
+		description: "Custom delimiter (Multi-character), field contains custom delimiter",
+		input: [['A', 'b', 'c'], ['d', 'e', 'f, g']],
+		config: { delimiter: ', ' },
+		expected: 'A, b, c\r\nd, e, "f, g"'
 	},
 	{
 		description: "Bad delimiter (\\n)",
