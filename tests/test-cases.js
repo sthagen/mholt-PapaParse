@@ -1608,6 +1608,31 @@ var PARSE_ASYNC_TESTS = [
 			data: [['A','B','C'],['X','Y','Z']],
 			errors: []
 		}
+	},
+	{
+		description: "File with a few regular and lots of empty lines",
+		disabled: !FILES_ENABLED,
+		input: FILES_ENABLED ? new File(["A,B,C\nX,Y,Z\n" + new Array(500000).fill(",,").join("\n")], "sample.csv") : false,
+		config: {
+			skipEmptyLines: "greedy"
+		},
+		expected: {
+			data: [['A','B','C'],['X','Y','Z']],
+			errors: []
+		}
+	},
+	{
+		description: "File with a few regular and lots of empty lines + worker",
+		disabled: !FILES_ENABLED,
+		input: FILES_ENABLED ? new File(["A,B,C\nX,Y,Z\n" + new Array(500000).fill(",,").join("\n")], "sample.csv") : false,
+		config: {
+			worker: true,
+			skipEmptyLines: "greedy"
+		},
+		expected: {
+			data: [['A','B','C'],['X','Y','Z']],
+			errors: []
+		}
 	}
 ];
 
@@ -1836,9 +1861,9 @@ var UNPARSE_TESTS = [
 	},
 	{
 		description: "Returns without rows with no content when skipEmptyLines is 'greedy'",
-		input: [[null, ' '], [], ['1', '2']],
+		input: [[null, ' '], [], ['1', '2']].concat(new Array(500000).fill(['', ''])).concat([['3', '4']]),
 		config: {skipEmptyLines: 'greedy'},
-		expected: '1,2'
+		expected: '1,2\r\n3,4'
 	},
 	{
 		description: "Returns empty rows when empty rows are passed and skipEmptyLines is false with headers",
@@ -1866,6 +1891,13 @@ var UNPARSE_TESTS = [
 		expected: 'a,b,c\r\n1,2,\r\n\r\n3,,4'
 	},
 	{
+		description: "Column option used to manually specify keys with input type object",
+		notes: "Should not throw any error when attempting to serialize key not present in object. Columns are different than keys of the first object. When an object is missing a key then the serialized value should be an empty string.",
+		input: { data: [{a: 1, b: '2'}, {}, {a: 3, d: 'd', c: 4,}] },
+		config: {columns: ['a', 'b', 'c']},
+		expected: 'a,b,c\r\n1,2,\r\n\r\n3,,4'
+	},
+	{
 		description: "Use different escapeChar",
 		input: [{a: 'foo', b: '"quoted"'}],
 		config: {header: false, escapeChar: '\\'},
@@ -1881,7 +1913,7 @@ var UNPARSE_TESTS = [
 		description: "Escape formulae",
 		input: [{ "Col1": "=danger", "Col2": "@danger", "Col3": "safe" }, { "Col1": "safe=safe", "Col2": "+danger", "Col3": "-danger, danger" }, { "Col1": "'+safe", "Col2": "'@safe", "Col3": "safe, safe" }],
 		config: { escapeFormulae: true },
-		expected: 'Col1,Col2,Col3\r\n\'=danger,\'@danger,safe\r\nsafe=safe,\'+danger,"\'-danger, danger"\r\n\'+safe,\'@safe,"safe, safe"'
+		expected: 'Col1,Col2,Col3\r\n"\'=danger","\'@danger",safe\r\nsafe=safe,"\'+danger","\'-danger, danger"\r\n\'+safe,\'@safe,"safe, safe"'
 	},
 	{
 		description: "Don't escape formulae by default",
@@ -1898,13 +1930,38 @@ var UNPARSE_TESTS = [
 		description: "Escape formulae with single-quote quoteChar and escapeChar",
 		input: [{ "Col1": "=danger", "Col2": "@danger", "Col3": "safe" }, { "Col1": "safe=safe", "Col2": "+danger", "Col3": "-danger, danger" }, { "Col1": "'+safe", "Col2": "'@safe", "Col3": "safe, safe" }],
 		config: { escapeFormulae: true, quoteChar: "'", escapeChar: "'" },
-		expected: 'Col1,Col2,Col3\r\n\'\'=danger,\'\'@danger,safe\r\nsafe=safe,\'\'+danger,\'\'\'-danger, danger\'\r\n\'\'+safe,\'\'@safe,\'safe, safe\''
+		expected: 'Col1,Col2,Col3\r\n\'\'\'=danger\',\'\'\'@danger\',safe\r\nsafe=safe,\'\'\'+danger\',\'\'\'-danger, danger\'\r\n\'\'+safe,\'\'@safe,\'safe, safe\''
 	},
 	{
 		description: "Escape formulae with single-quote quoteChar and escapeChar and forced quotes",
 		input: [{ "Col1": "=danger", "Col2": "@danger", "Col3": "safe" }, { "Col1": "safe=safe", "Col2": "+danger", "Col3": "-danger, danger" }, { "Col1": "'+safe", "Col2": "'@safe", "Col3": "safe, safe" }],
 		config: { escapeFormulae: true, quotes: true, quoteChar: "'", escapeChar: "'" },
 		expected: '\'Col1\',\'Col2\',\'Col3\'\r\n\'\'\'=danger\',\'\'\'@danger\',\'safe\'\r\n\'safe=safe\',\'\'\'+danger\',\'\'\'-danger, danger\'\r\n\'\'\'+safe\',\'\'\'@safe\',\'safe, safe\''
+	},
+	// new escapeFormulae values:
+	{
+		description: "Escape formulae with tab and carriage-return",
+		input: [{ "Col1": "\tdanger", "Col2": "\rdanger,", "Col3": "safe\t\r" }],
+		config: { escapeFormulae: true },
+		expected: 'Col1,Col2,Col3\r\n"\'\tdanger","\'\rdanger,","safe\t\r"'
+	},
+	{
+		description: "Escape formulae with tab and carriage-return, with forced quotes",
+		input: [{ "Col1": "	danger", "Col2": "\rdanger,", "Col3": "safe\t\r" }],
+		config: { escapeFormulae: true, quotes: true },
+		expected: '"Col1","Col2","Col3"\r\n"\'\tdanger","\'\rdanger,","safe\t\r"'
+	},
+	{
+		description: "Escape formulae with tab and carriage-return, with single-quote quoteChar and escapeChar",
+		input: [{ "Col1": "	danger", "Col2": "\rdanger,", "Col3": "safe, \t\r" }],
+		config: { escapeFormulae: true, quoteChar: "'", escapeChar: "'" },
+		expected: 'Col1,Col2,Col3\r\n\'\'\'\tdanger\',\'\'\'\rdanger,\',\'safe, \t\r\''
+	},
+	{
+		description: "Escape formulae with tab and carriage-return, with single-quote quoteChar and escapeChar and forced quotes",
+		input: [{ "Col1": "	danger", "Col2": "\rdanger,", "Col3": "safe, \t\r" }],
+		config: { escapeFormulae: true, quotes: true, quoteChar: "'", escapeChar: "'" },
+		expected: '\'Col1\',\'Col2\',\'Col3\'\r\n\'\'\'\tdanger\',\'\'\'\rdanger,\',\'safe, \t\r\''
 	},
 ];
 

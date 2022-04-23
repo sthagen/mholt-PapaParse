@@ -1,6 +1,6 @@
 /* @license
 Papa Parse
-v5.3.1
+v5.3.2
 https://github.com/mholt/PapaParse
 License: MIT
 */
@@ -307,7 +307,7 @@ License: MIT
 			if (Array.isArray(_input.data))
 			{
 				if (!_input.fields)
-					_input.fields =  _input.meta && _input.meta.fields;
+					_input.fields = _input.meta && _input.meta.fields || _columns;
 
 				if (!_input.fields)
 					_input.fields =  Array.isArray(_input.data[0])
@@ -367,10 +367,10 @@ License: MIT
 				_escapedQuote = _config.escapeChar + _quoteChar;
 			}
 
-			if (typeof _config.escapeFormulae === 'boolean')
-				_escapeFormulae = _config.escapeFormulae;
+			if (typeof _config.escapeFormulae === 'boolean' || _config.escapeFormulae instanceof RegExp) {
+				_escapeFormulae = _config.escapeFormulae instanceof RegExp ? _config.escapeFormulae : /^[=+\-@\t\r].*$/;
+			}
 		}
-
 
 		/** The double for loop that iterates the data and writes out a CSV string including header row */
 		function serialize(fields, data, skipEmptyLines)
@@ -444,13 +444,17 @@ License: MIT
 			if (str.constructor === Date)
 				return JSON.stringify(str).slice(1, 25);
 
-			if (_escapeFormulae === true && typeof str === "string" && (str.match(/^[=+\-@].*$/) !== null)) {
+			var needsQuotes = false;
+
+			if (_escapeFormulae && typeof str === "string" && _escapeFormulae.test(str)) {
 				str = "'" + str;
+				needsQuotes = true;
 			}
 
 			var escapedQuoteStr = str.toString().replace(quoteCharRegex, _escapedQuote);
 
-			var needsQuotes = (typeof _quotes === 'boolean' && _quotes)
+			needsQuotes = needsQuotes
+							|| _quotes === true
 							|| (typeof _quotes === 'function' && _quotes(str, col))
 							|| (Array.isArray(_quotes) && _quotes[col])
 							|| hasAny(escapedQuoteStr, Papa.BAD_DELIMITERS)
@@ -1159,9 +1163,9 @@ License: MIT
 
 			if (_config.skipEmptyLines)
 			{
-				for (var i = 0; i < _results.data.length; i++)
-					if (testEmptyLine(_results.data[i]))
-						_results.data.splice(i--, 1);
+				_results.data = _results.data.filter(function(d) {
+					return !testEmptyLine(d);
+				});
 			}
 
 			if (needsHeaderRow())
@@ -1399,8 +1403,7 @@ License: MIT
 		var preview = config.preview;
 		var fastMode = config.fastMode;
 		var quoteChar;
-		/** Allows for no quoteChar by setting quoteChar to undefined in config */
-		if (config.quoteChar === undefined) {
+		if (config.quoteChar === undefined || config.quoteChar === null) {
 			quoteChar = '"';
 		} else {
 			quoteChar = config.quoteChar;
