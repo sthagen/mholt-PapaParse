@@ -1,6 +1,6 @@
 /* @license
 Papa Parse
-v5.6.0
+v5.7.0
 https://github.com/mholt/PapaParse
 License: MIT
 */
@@ -110,6 +110,16 @@ License: MIT
 		_config.dynamicTyping = dynamicTyping;
 
 		_config.transform = isFunction(_config.transform) ? _config.transform : false;
+
+		if (_config.downloadTimeout !== undefined)
+		{
+			var downloadTimeout = parseInt(_config.downloadTimeout);
+			if (isNaN(downloadTimeout))
+			{
+				throw new Error('Config downloadTimeout value (' + _config.downloadTimeout + ') not parsable by parseInt(val).');
+			}
+			_config.downloadTimeout = downloadTimeout;
+		}
 
 		if (_config.worker && Papa.WORKERS_SUPPORTED)
 		{
@@ -580,7 +590,14 @@ License: MIT
 				xhr.onerror = bindFunction(this._chunkError, this);
 			}
 
+			xhr.ontimeout = bindFunction(this._chunkTimeout, this);
+
 			xhr.open(this._config.downloadRequestBody ? 'POST' : 'GET', this._input, !IS_WORKER);
+			// Timeout is only supported for asynchronous requests
+			if (this._config.downloadTimeout && !IS_WORKER)
+			{
+				xhr.timeout = this._config.downloadTimeout;
+			}
 			// Headers can only be set when once the request state is OPENED
 			if (this._config.downloadRequestHeaders)
 			{
@@ -630,6 +647,11 @@ License: MIT
 		{
 			var errorText = xhr.statusText || errorMessage;
 			this._sendError(new Error(errorText));
+		};
+
+		this._chunkTimeout = function()
+		{
+			this._chunkError('Request timed out after ' + this._config.downloadTimeout + 'ms');
 		};
 
 		function getFileSize(xhr)
@@ -1020,6 +1042,8 @@ License: MIT
 			}
 
 			var parserConfig = copy(_config);
+			// Tell the parser the header instead of reguessing on each chunk
+			parserConfig.header = needsHeaderRow();
 			if (_config.preview && _config.header)
 				parserConfig.preview++;	// to compensate for header row
 
@@ -1143,12 +1167,8 @@ License: MIT
 			if (!_results)
 				return;
 
-			function addHeader(header, i)
+			function addHeader(header)
 			{
-				header = stripBom(header);
-				if (isFunction(_config.transformHeader))
-					header = _config.transformHeader(header, i);
-
 				_fields.push(header);
 			}
 

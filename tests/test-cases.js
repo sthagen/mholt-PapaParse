@@ -1707,6 +1707,18 @@ describe('Parse Tests', function() {
 		assert.isObject(result.meta.renamedHeaders, 'renamedHeaders should be an object');
 		assert.deepEqual(result.meta.renamedHeaders, {Column_1: 'Column'}, 'renamedHeaders should contain the renamed header mapping');
 	});
+
+	it('downloadTimeout throws when set to a value not parsable by parseInt', function() {
+		assert.throws(function() {
+			Papa.parse('A,B,C', { downloadTimeout: 'not-a-number' });
+		}, /downloadTimeout/);
+	});
+
+	it('downloadTimeout is coerced to a number when parsable', function() {
+		var result = Papa.parse('A,B,C', { downloadTimeout: '5000' });
+
+		assert.deepEqual(result.data, [['A', 'B', 'C']]);
+	});
 });
 
 
@@ -2322,6 +2334,48 @@ var CUSTOM_TESTS = [
 		}
 	},
 	{
+		description: "Duplicate values in a data row are not renamed after resume (Regression Test for Issue #998)",
+		expected: [
+			{c1: 'foo, bar', c2: 'foo, bar', c3: 'v1'},
+			{c1: 'foo, bar', c2: 'foo, bar', c3: 'v2'}
+		],
+		run: function(callback) {
+			var rows = [];
+			Papa.parse('c1,c2,c3\n"foo, bar","foo, bar",v1\n"foo, bar","foo, bar",v2\n', {
+				header: true,
+				step: function(results, parser) {
+					parser.pause();
+					rows.push(results.data);
+					parser.resume();
+				},
+				complete: function() {
+					callback(rows);
+				}
+			});
+		}
+	},
+	{
+		description: "Empty trailing fields stay empty after resume (Regression Test for Issue #985)",
+		expected: [
+			{a: '1', b: 'x', c: '', d: ''},
+			{a: '2', b: 'y', c: '', d: ''}
+		],
+		run: function(callback) {
+			var rows = [];
+			Papa.parse('a,b,c,d\n1,x,,\n2,y,,\n', {
+				header: true,
+				step: function(results, parser) {
+					parser.pause();
+					rows.push(results.data);
+					parser.resume();
+				},
+				complete: function() {
+					callback(rows);
+				}
+			});
+		}
+	},
+	{
 		description: "Complete is called with all results if neither step nor chunk is defined",
 		expected: [['A', 'b', 'c'], ['d', 'E', 'f'], ['G', 'h', 'i']],
 		disabled: !FILES_ENABLED,
@@ -2844,6 +2898,66 @@ var CUSTOM_TESTS = [
 				},
 				complete: function() {
 					callback(data);
+				}
+			});
+		}
+	},
+	{
+		description: "downloadTimeout aborts a slow remote request with a timeout error",
+		disabled: !XHR_ENABLED,
+		timeout: 5000,
+		expected: true,
+		run: function(callback) {
+			Papa.parse(BASE_PATH + "slow-sample.csv", {
+				download: true,
+				downloadTimeout: 200,
+				error: function(err) {
+					callback(/timed out/i.test(err.message));
+				},
+				complete: function() {
+					callback(false);
+				}
+			});
+		}
+	},
+	{
+		description: "downloadTimeout does not interfere with a request that finishes in time",
+		disabled: !XHR_ENABLED,
+		timeout: 5000,
+		expected: [['A', 'B', 'C'], ['X', 'Y', 'Z']],
+		run: function(callback) {
+			Papa.parse(BASE_PATH + "sample.csv", {
+				download: true,
+				downloadTimeout: 10000,
+				complete: function(results) {
+					callback(results.data);
+				},
+				error: function(err) {
+					callback(err);
+				}
+			});
+		}
+	},
+	{
+		description: "transformHeader is called exactly once per header when streaming in chunks",
+		// Each header must be passed to transformHeader exactly once, with its
+		// original (untransformed) value. Regression test for #1083.
+		expected: ['Col1', 'Col2', 'Col3'],
+		run: function(callback) {
+			var seen = [];
+			var rows = [];
+			for (var i = 0; i < 20; i++)
+				rows.push('a' + i + ',b' + i + ',c' + i);
+			var input = 'Col1,Col2,Col3\r\n' + rows.join('\r\n');
+			Papa.parse(input, {
+				header: true,
+				chunkSize: 10,	// force many chunks so the header row is crossed once
+				transformHeader: function(header) {
+					seen.push(header);
+					return header.toLowerCase();
+				},
+				complete: function() {
+					callback(seen);
 				}
 			});
 		}
